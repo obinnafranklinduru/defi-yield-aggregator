@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.13;
+pragma solidity ^0.8.26;
 
 import "forge-std/Test.sol";
 import "../src/YieldVault.sol";
@@ -7,7 +7,7 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 // Mock ERC20 token for testing purposes
 contract MockToken is ERC20 {
-    constructor() ERC20("Mock Token", "MTK") {}
+    constructor(string memory _name, string memory _symbol) ERC20(_name, _symbol) {}
 
     function mint(address to, uint256 amount) external {
         _mint(to, amount);
@@ -20,38 +20,30 @@ contract YieldVaultTest is Test {
 
     address USER = makeAddr("user");
     address OWNER = makeAddr("owner");
-    uint256 constant SEND_VALUE = 1 ether;
     uint256 constant STARTING_BALANCE = 100 ether;
 
     function setUp() public {
-        // Deploy the mock token and mint some tokens for testing
-        token = new MockToken();
-        token.mint(USER, 1000 ether);  // Mint 1000 tokens to the user
-
         vm.deal(USER, STARTING_BALANCE);
         vm.deal(OWNER, STARTING_BALANCE);
 
+        token = new MockToken("MockToken", "MTK");
+        token.mint(USER, 1000 ether);
+        token.mint(OWNER, 1000 ether);
+
         // Deploy the vault contract with the mock token
         vm.prank(OWNER);
-        vault = new YieldVault(address(token));
-
-        // Set the vault owner
-        vm.startPrank(OWNER);
-        vault.transferOwnership(OWNER);
-        vm.stopPrank();
+        vault = new YieldVault(address(token), "Vault Token", "vMTK");
     }
 
     function testDeposit() public {
-        // User approves the vault to spend tokens
         vm.startPrank(USER);
-        token.approve(address(vault), 500 ether);
+        token.approve(address(vault), 100 ether);
 
-        // User deposits tokens into the vault
-        vault.deposit(500 ether);
-
-        // Check the vault balance and user balance
-        assertEq(token.balanceOf(address(vault)), 500 ether);
-        assertEq(vault.userBalances(USER), 500 ether);
+        uint256 depositAmount = 100 ether;
+        vault.deposit(depositAmount);
+        
+        assertEq(vault.balanceOf(USER), depositAmount); // 1:1 share ratio at start
+        assertEq(vault.totalAssets(), depositAmount);
         vm.stopPrank();
     }
 
@@ -59,29 +51,31 @@ contract YieldVaultTest is Test {
         // User deposits tokens first
         vm.startPrank(USER);
         token.approve(address(vault), 500 ether);
-        vault.deposit(500 ether);
 
-        // User withdraws tokens
-        vault.withdraw(200 ether);
+        uint256 depositAmount = 100 ether;
+        vault.deposit(depositAmount);
+        
+        uint256 withdrawAmount = 50 ether;
+        vault.withdraw(withdrawAmount);
 
-        // Check balances after withdrawal
-        assertEq(token.balanceOf(USER), 700 ether);  // 1000 - 500 + 200
-        assertEq(vault.userBalances(USER), 300 ether);  // 500 - 200
-        vm.stopPrank();
+        assertEq(vault.balanceOf(USER), 50 ether); // User has 50 shares left
+        assertEq(vault.totalAssets(), 50 ether);   // Vault's total assets decrease
+        assertEq(token.balanceOf(USER), 950 ether); // User got 50 tokens back
     }
 
-    function testInsufficientWithdraw() public {
-        // User deposits 500 tokens
+    function testFailZeroDeposit() public {
+        vm.startPrank(USER);
+        vault.deposit(0);  // Should fail
+    }
+
+    function testFailWithdrawMoreThanBalance() public {
+        // Test user trying to withdraw more than they deposited
         vm.startPrank(USER);
         token.approve(address(vault), 500 ether);
-        vault.deposit(500 ether);
-
-        // Try to withdraw more than balance, expecting a revert with InsufficientBalance
-        vm.expectRevert();
-        vault.withdraw(600 ether);
-
-        vm.stopPrank();
+        vault.deposit(100 ether);
+        vault.withdraw(200 ether);  // Should fail
     }
+
 
     function testEmergencyPause() public {
         // Only the owner can pause the contract

@@ -1,34 +1,35 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.13;
+pragma solidity ^0.8.26;
 
-error NotAuthorized();
-abstract contract Strategy {
-    address public vault;  // Vault that interacts with the strategy
-    address public want;   // The token the strategy works with (e.g., DAI, USDC)
+// error NotAuthorized();
 
-    constructor(address _vault, address _want) {
-        vault = _vault;
-        want = _want;
-    }
+// abstract contract Strategy {
+//     address public vault; // Vault that interacts with the strategy
+//     address public want; // The token the strategy works with (e.g., DAI, USDC)
 
-    // Modifier to restrict access to only the vault
-    modifier onlyVault() {
-        if(msg.sender != vault) revert NotAuthorized();
-        _;
-    }
+//     constructor(address _vault, address _want) {
+//         vault = _vault;
+//         want = _want;
+//     }
 
-    // Deposit funds into the strategy (only callable by the vault)
-    function deposit(uint256 amount) external virtual onlyVault;
+//     // Modifier to restrict access to only the vault
+//     modifier onlyVault() {
+//         if (msg.sender != vault) revert NotAuthorized();
+//         _;
+//     }
 
-    // Withdraw funds from the strategy (only callable by the vault)
-    function withdraw(uint256 amount) external virtual onlyVault returns (uint256);
+//     // Deposit funds into the strategy (only callable by the vault)
+//     function deposit(uint256 amount) external virtual onlyVault;
 
-    // Return the total value managed by this strategy
-    function balanceOf() external view virtual returns (uint256);
+//     // Withdraw funds from the strategy (only callable by the vault)
+//     function withdraw(uint256 amount) external virtual onlyVault returns (uint256);
 
-    // Harvest the yield (only callable by the vault)
-    function harvest() external virtual onlyVault;
+//     // Return the total value managed by this strategy
+//     function balanceOf() external view virtual returns (uint256);
 
-    // Emergency withdraw all funds from the strategy
-    function emergencyWithdraw() external virtual onlyVault returns (uint256);
-}
+//     // Harvest the yield (only callable by the vault)
+//     function harvest() external virtual onlyVault;
+
+//     // Emergency withdraw all funds from the strategy
+//     function emergencyWithdraw() external virtual onlyVault returns (uint256);
+// }
