@@ -3,9 +3,10 @@ src = "src"
 out = "out"
 libs = ["lib"]
 remappings = [
-    "@openzeppelin/=lib/openzeppelin-contracts/contracts/",
-    "@aave/protocol-v2/=lib/protocol-v2/contracts/",
-    "@compound/=lib/compound=protocol/contracts/"    
+    "@openzeppelin/=lib/openzeppelin-contracts/",
+    "@aave/protocol-v2/=lib/protocol-v2/",
+    "@compound/=lib/compound=protocol/",
+    "@aave/core-v3/=lib/aave-v3-core"    
 ]
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options

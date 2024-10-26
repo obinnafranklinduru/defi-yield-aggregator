@@ -10,3 +10,6 @@
 [submodule "lib/compound-protocol"]
 	path = lib/compound-protocol
 	url = https://github.com/compound-finance/compound-protocol
+[submodule "lib/aave-v3-core"]
+	path = lib/aave-v3-core
+	url = https://github.com/aave/aave-v3-core
