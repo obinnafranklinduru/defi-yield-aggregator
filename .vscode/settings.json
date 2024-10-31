@@ -4,6 +4,7 @@
     "@aave/protocol-v2/=lib/protocol-v2/",
     "@compound/=lib/compound=protocol/",
     "@aave/core-v3/=lib/aave-v3-core/",
+    "foundry-devops/=lib/foundry-devops/",
     "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
     "aave-v3-core/=lib/aave-v3-core/",
     "compound-protocol/=lib/compound-protocol/",

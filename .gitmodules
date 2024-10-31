@@ -13,3 +13,6 @@
 [submodule "lib/aave-v3-core"]
 	path = lib/aave-v3-core
 	url = https://github.com/aave/aave-v3-core
+[submodule "lib/foundry-devops"]
+	path = lib/foundry-devops
+	url = https://github.com/cyfrin/foundry-devops
