@@ -1,18 +1,40 @@
-# YieldAggregator Smart Contract
+# Yield Aggregator Smart Contract
 
-## Project Overview
+The **YieldAggregator** smart contract is designed to manage user deposits to maximize yield across popular DeFi protocols, such as **Aave** and **Compound**. The contract dynamically allocates funds to the protocol with the highest yield, provides fee management, and allows emergency withdrawals for enhanced security.
 
-`YieldAggregator` is a smart contract that maximizes yield on deposited Ethereum (WETH) by dynamically allocating funds between the Aave and Compound protocols based on the current APY (Annual Percentage Yield). The contract automates yield-optimization, collects performance and management fees, and includes emergency functions and rebalancing to ensure efficiency and security.
+## Table of Contents
 
-The contract is developed with Solidity on the Ethereum blockchain and leverages key DeFi protocols, making it suitable for users looking to maximize returns on their Ethereum holdings while benefiting from automated and efficient asset management.
+- [Overview](#overview)
+- [Features](#features)
+- [Contract Structure](#contract-structure)
+- [Usage](#usage)
+  - [Deployment](#deployment)
+  - [Interacting with the Contract](#interacting-with-the-contract)
+    - [Deposits](#deposits)
+    - [Withdrawals](#withdrawals)
+    - [Rebalance](#rebalance)
+    - [Emergency Withdrawal](#emergency-withdrawal)
+- [Roles and Permissions](#roles-and-permissions)
+- [Fee Structure](#fee-structure)
+- [Events](#events)
+- [Security Considerations](#security-considerations)
+- [Dependencies](#dependencies)
+- [License](#license)
+
+---
+
+## Overview
+
+**YieldAggregator** is a secure, flexible smart contract for managing user funds across DeFi protocols. It allows users to deposit **Wrapped ETH (WETH)**, dynamically shifting the funds between **Aave** and **Compound** to achieve optimal returns. The contract features management and performance fees, emergency withdrawal, and rebalance functionalities, all governed by the owner and assigned emergency admins.
 
 ## Features
 
-- **Automated Yield Optimization**: Compares APY rates between Aave and Compound, reallocating funds based on the most favorable yield.
-- **Rebalancing**: Reallocates funds only when there is a sufficient difference in APY rates between Aave and Compound, as determined by a configurable threshold.
-- **Fee Collection**: Collects both a management fee and a performance fee, set as percentages in basis points (bps), to compensate for service usage.
-- **Emergency Withdrawal**: Allows for emergency fund withdrawal in cases of contract compromise or protocol failure, accessible by authorized addresses.
-- **Configurable Parameters**: Provides configurability of rebalancing thresholds, fees, and emergency admin access for better adaptability and management.
+- **Dynamic Yield Optimization**: Switches between Aave and Compound based on the higher APY.
+- **Flexible Fee Structure**: Annual management and performance fees are applied and can be updated by the owner.
+- **Emergency Controls**: Enables admins to manage emergency withdrawals and halt operations if necessary.
+- **Automated Rebalance**: Adjusts fund allocation based on updated APY data.
+- **Secure WETH Handling**: Utilizes SafeERC20 for safe WETH transfers.
+- **Access Control**: Admin and owner roles for secure operation.
 
 ## Requirements
 
@@ -21,76 +43,136 @@ The contract is developed with Solidity on the Ethereum blockchain and leverages
 - **OpenZeppelin** for access control, security, and token standards
 - **Aave V3 and Compound Protocols** (integrated within the contract)
 
-## Contract Overview
+## Contract Structure
 
-The core logic is contained in the `YieldAggregator` smart contract. Here is a breakdown of its functionality:
+The contract is organized as follows:
 
-### Key Variables
+1. **UserDeposit and Fees Structs**: Data structures to track user deposits and fee settings.
+2. **Events**: Emitted for deposits, withdrawals, fee collection, and other key actions.
+3. **Modifiers**: Access controls for emergency actions and emergency checks.
+4. **Deposit and Withdraw Functions**: Main user-facing functions for depositing and withdrawing funds.
+5. **Internal Protocol Management**: Functions for depositing, withdrawing, and rebalancing between protocols.
+6. **Admin Functions**: For emergency actions and protocol configuration.
 
-- **AaveV3PoolAddressProvider, CompoundV3ProxyAddress, WETH_Address, AaaveWETH_Address**: Addresses for Aave and Compound contracts, as well as the WETH token.
-- **depositAmount**: Tracks the amount deposited by users.
-- **locationOfFunds**: Indicates the current protocol where funds are allocated (`Aave` or `Compound`).
-- **rebalanceThreshold**: The minimum APY difference between Aave and Compound that triggers a reallocation.
-- **managementFee, performanceFee**: Configurable fees that determine the management and performance compensation percentages.
-- **emergencyExit, emergencyAdmins**: Emergency functions and access controls in case of a critical issue.
+## Usage
 
-### Contract Functions
+### Deployment
 
-#### User Functions
+1. **Prerequisites**: Deploy the contract with valid addresses for:
 
-- **deposit(\_amount, \_compAPY, \_aaveAPY)**:
+   - **WETH_ADDRESS**: WETH token address.
+   - **AAVE_WETH_ADDRESS**: Address of Aave's WETH reserve.
+   - **COMPOUND_PROXY_ADDRESS**: Compound protocol’s proxy contract.
+   - **AAVE_POOL_PROVIDER**: Aave’s address provider for the pool.
+   - **feeCollector**: Address for collecting fees.
 
-  - Takes a user’s WETH deposit, checks the provided APYs for Compound and Aave, and allocates funds to the protocol offering the highest APY.
-  - Rebalances funds if necessary based on the `rebalanceThreshold`.
-  - Emits a `Deposit` event.
+2. **Constructor Parameters**:
+   - `_wethAddress`: Address of the WETH token.
+   - `_aaveWethAddress`: Address of the Aave WETH reserve.
+   - `_compoundProxy`: Address of the Compound proxy.
+   - `_aavePoolProvider`: Address provider for Aave’s pool.
+   - `_feeCollector`: Address for collecting protocol fees.
 
-- **withdraw()**:
+Example:
 
-  - Withdraws all funds to the user. Before executing, it collects any outstanding management or performance fees.
-  - Emits a `Withdraw` event.
+```solidity
+YieldAggregator(
+    _wethAddress,
+    _aaveWethAddress,
+    _compoundProxy,
+    _aavePoolProvider,
+    _feeCollector
+)
+```
 
-- **rebalance(\_compAPY, \_aaveAPY)**:
-  - Checks if a rebalance is necessary by comparing the APY difference to `rebalanceThreshold`. If met, reallocates funds to the protocol with the higher APY.
-  - Can only be called by the owner and is subject to a cooldown to prevent excessive rebalancing.
-  - Emits a `Rebalance` event.
+### Interacting with the Contract
 
-#### Emergency Functions
+#### Deposits
 
-- **emergencyWithdraw()**:
-  - Allows withdrawal of funds bypassing normal checks, accessible only by the owner or an `emergencyAdmin`.
-  - Sets `emergencyExit` to `true` and emits an `EmergencyWithdraw` event.
+**Function**: `deposit`
 
-#### Fee Collection
+Deposits the user’s WETH into the yield aggregator, which allocates funds to the protocol offering the highest APY.
 
-- **\_collectManagementFee()**:
+Parameters:
 
-  - Calculates and collects the management fee, reducing `depositAmount` by the calculated fee amount.
+- `amount`: Amount of WETH to deposit.
+- `compAPY`: Current APY from Compound.
+- `aaveAPY`: Current APY from Aave.
 
-- **\_collectPerformanceFee()**:
-  - Calculates and collects performance fees on the yield generated beyond the original deposit, reducing `depositAmount` by the calculated fee amount.
+Example Call:
 
-#### Internal Protocol Functions
+```solidity
+deposit(amount, compAPY, aaveAPY)
+```
 
-- **\_depositToAave(\_amount)**, **\_depositToCompound(\_amount)**:
+#### Withdrawals
 
-  - Handle protocol-specific deposits for WETH into Aave and Compound.
+**Function**: `withdraw`
 
-- **\_withdrawFromAave()**, **\_withdrawFromCompound()**:
-  - Withdraw funds from Aave and Compound, respectively, returning the amount withdrawn.
+Allows users to withdraw their deposited WETH along with any accrued yield, after fees.
 
-### Configurable Admin Functions
+Example Call:
 
-- **setRebalanceThreshold(\_newThreshold)**: Adjusts the minimum APY difference needed to trigger a rebalance.
-- **setEmergencyAdmin(\_admin, \_status)**: Adds or removes addresses with `emergencyAdmin` permissions.
-- **setPerformanceFee(\_newFee)**, **setManagementFee(\_newFee)**: Set or adjust the performance and management fees.
+```solidity
+withdraw()
+```
 
-### Events
+#### Rebalance
 
-- **Deposit**: Triggered upon a successful deposit.
-- **Withdraw**: Triggered upon a successful withdrawal.
-- **Rebalance**: Triggered when a rebalance is performed.
-- **EmergencyWithdraw**: Triggered when an emergency withdrawal is executed.
-- **ManagementFeeCollected, PerformanceFeeCollected**: Triggered when management or performance fees are collected.
+**Function**: `rebalance`
+
+This function shifts funds from one protocol to another based on updated APY data. Only accessible by emergency admins and the owner.
+
+Parameters:
+
+- `compAPY`: Current APY from Compound.
+- `aaveAPY`: Current APY from Aave.
+
+Example Call:
+
+```solidity
+rebalance(compAPY, aaveAPY)
+```
+
+#### Emergency Withdrawal
+
+**Function**: `emergencyWithdraw`
+
+Allows emergency admins or the owner to withdraw all deposited funds to the owner’s address, effectively pausing the protocol and setting `emergencyExitEnabled` to true.
+
+Example Call:
+
+```solidity
+emergencyWithdraw()
+```
+
+## Roles and Permissions
+
+- **Owner**: Has full control, including configuration updates and fee adjustments.
+- **Emergency Admins**: Assigned addresses authorized to perform emergency actions, such as calling `emergencyWithdraw` and `rebalance`.
+
+## Fee Structure
+
+The contract implements both management and performance fees:
+
+- **Annual Management Fee**: Deducted based on the annual rate specified in basis points (1% by default).
+- **Performance Fee**: Calculated on the yield accrued and also in basis points (10% by default).
+
+Fees can be updated using the `updateProtocolConfiguration` function, but cannot exceed a set maximum:
+
+- `MAX_MANAGEMENT_FEE`: 5% (500 basis points)
+- `MAX_PERFORMANCE_FEE`: 30% (3000 basis points)
+
+## Events
+
+The contract emits several key events to notify external systems of state changes:
+
+1. `Deposit`: Emitted on a successful deposit.
+2. `Withdrawal`: Emitted upon a successful withdrawal.
+3. `Rebalance`: Emitted when funds are rebalanced between protocols.
+4. `EmergencyWithdrawal`: Emitted during an emergency withdrawal.
+5. `FeesCollected`: Emitted when fees are collected.
+6. `ProtocolConfigurationUpdated`: Emitted upon protocol configuration updates.
 
 ## Installation and Setup
 
@@ -128,16 +210,22 @@ The core logic is contained in the `YieldAggregator` smart contract. Here is a b
 
 ## Security Considerations
 
-- **Emergency Exit**: Provides administrators with emergency withdrawal capabilities to secure funds if there’s a critical issue.
-- **Reentrancy Guard**: Protects against reentrancy attacks on core functions.
-- **Pausable Contract**: Allows contract pausing to temporarily suspend critical functions.
-- **Access Control**: Only the owner or authorized emergency admins can execute certain sensitive functions.
+1. **Emergency Controls**: The contract includes emergency withdrawal functionality and only allows certain actions when `emergencyExitEnabled` is false.
+2. **SafeERC20**: Uses SafeERC20 to manage WETH transfers, preventing potential token transfer errors.
+3. **Custom Errors**: Uses custom error messages to minimize gas usage and improve debugging.
+4. **Non-Reentrant**: All functions interacting with external contracts are protected by `nonReentrant`.
+5. **Fallback and Receive Functions**: Fallback functions are set to revert on unexpected direct transfers.
 
-## Future Enhancements
+## Dependencies
 
-- **Additional Protocol Integrations**: Consider extending to other DeFi protocols like Yearn or Curve.
-- **Dynamic Rebalance Thresholds**: Implement dynamic thresholds based on market conditions for more adaptive rebalancing.
-- **Frontend Dashboard**: Develop a UI for users to monitor their deposits, yield, and contract status in real time.
+The contract relies on several external libraries and interfaces:
+
+- **@openzeppelin/contracts/access/Ownable**: Provides ownership control.
+- **@openzeppelin/contracts/utils/Pausable**: Allows the owner to pause functions.
+- **@openzeppelin/contracts/token/ERC20/IERC20**: ERC20 token interface for WETH.
+- **@openzeppelin/contracts/token/ERC20/utils/SafeERC20**: Ensures safe token transfers.
+- **@aave/core-v3**: For interaction with Aave's Pool and PoolAddressesProvider.
+- **Compound Protocol**: For interaction with Compound’s lending platform.
 
 ## License
 
