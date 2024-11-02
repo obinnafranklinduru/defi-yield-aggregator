@@ -32,14 +32,19 @@ contract YieldAggregator is Ownable, ReentrancyGuard, Pausable {
     error YieldAggregator__InsufficientBalance(uint256 requested, uint256 available);
 
     // Protocol Structures
-    enum ProtocolType { NONE, COMPOUND, AAVE }
+    enum ProtocolType {
+        NONE,
+        COMPOUND,
+        AAVE
+    }
 
     // User Deposit Tracking
     struct UserDeposit {
-        uint256 amount;           // Total deposited amount
-        uint256 lastDepositTime;  // Timestamp of last deposit
+        uint256 amount; // Total deposited amount
+        uint256 lastDepositTime; // Timestamp of last deposit
         uint256 accumulatedYield; // Accumulated yield for the user
     }
+
     struct Fees {
         uint96 annualManagementFeeInBasisPoints;
         uint96 performanceFee;
@@ -54,7 +59,7 @@ contract YieldAggregator is Ownable, ReentrancyGuard, Pausable {
 
     // Fee-related constants
     uint256 public constant BASIS_POINTS = 10000;
-    uint96 public constant MAX_MANAGEMENT_FEE = 500;  // 5%
+    uint96 public constant MAX_MANAGEMENT_FEE = 500; // 5%
     uint96 public constant MAX_PERFORMANCE_FEE = 3000; // 30%
 
     uint256 public constant REBALANCE_COOLDOWN = 1 days; // Time-related constants
@@ -76,57 +81,30 @@ contract YieldAggregator is Ownable, ReentrancyGuard, Pausable {
     IComet public immutable compoundComet;
     IPool private aavePool;
 
-    event Deposit(
-        address indexed user, 
-        uint256 amount, 
-        ProtocolType protocol, 
-        uint256 timestamp
-    );
-    event Withdrawal(
-        address indexed user, 
-        uint256 amount, 
-        ProtocolType protocol, 
-        uint256 yield
-    );
-    event EmergencyWithdrawal
-    (
-        address indexed owner,
-        uint256 amount, 
-        ProtocolType protocol
-    );
-    event Rebalance(
-        ProtocolType fromProtocol, 
-        ProtocolType toProtocol, 
-        uint256 amount, 
-        uint256 timestamp
-    );
-    event ETHRefunded(
-        address indexed recipient, 
-        uint256 amount
-    );
+    event Deposit(address indexed user, uint256 amount, ProtocolType protocol, uint256 timestamp);
+    event Withdrawal(address indexed user, uint256 amount, ProtocolType protocol, uint256 yield);
+    event EmergencyWithdrawal(address indexed owner, uint256 amount, ProtocolType protocol);
+    event Rebalance(ProtocolType fromProtocol, ProtocolType toProtocol, uint256 amount, uint256 timestamp);
+    event ETHRefunded(address indexed recipient, uint256 amount);
     event FeesCollected(
-        address indexed user,
-        uint96 performanceFee,
-        uint96 annualManagementFeeInBasisPoints,
-        uint256 timestamp
+        address indexed user, uint96 performanceFee, uint96 annualManagementFeeInBasisPoints, uint256 timestamp
     );
     event ProtocolConfigurationUpdated(
-        address indexed admin,
-        address newFeeCollector,
-        uint256 newManagementFee,
-        uint256 newPerformanceFee
+        address indexed admin, address newFeeCollector, uint256 newManagementFee, uint256 newPerformanceFee
     );
 
     // Events
     modifier onlyEmergencyAdmin() {
-        if (!emergencyAdmins[msg.sender] && msg.sender != owner()) 
+        if (!emergencyAdmins[msg.sender] && msg.sender != owner()) {
             revert YieldAggregator__InvalidAddress(msg.sender);
+        }
         _;
     }
 
     modifier checkEmergency() {
-        if (emergencyExitEnabled) 
+        if (emergencyExitEnabled) {
             revert YieldAggregator__EmergencyExit();
+        }
         _;
     }
 
@@ -139,12 +117,10 @@ contract YieldAggregator is Ownable, ReentrancyGuard, Pausable {
         address _feeCollector
     ) Ownable(msg.sender) {
         // Address Validation
-        if (_wethAddress == address(0) || 
-            _aaveWethAddress == address(0) || 
-            _compoundProxy == address(0) || 
-            _aavePoolProvider == address(0) || 
-            _feeCollector == address(0)) 
-        {
+        if (
+            _wethAddress == address(0) || _aaveWethAddress == address(0) || _compoundProxy == address(0)
+                || _aavePoolProvider == address(0) || _feeCollector == address(0)
+        ) {
             revert YieldAggregator__InvalidConfiguration();
         }
 
@@ -157,7 +133,7 @@ contract YieldAggregator is Ownable, ReentrancyGuard, Pausable {
         compoundComet = IComet(_compoundProxy);
         feeCollector = _feeCollector;
 
-        fees.annualManagementFeeInBasisPoints = 100;   // 1%
+        fees.annualManagementFeeInBasisPoints = 100; // 1%
         fees.performanceFee = 1000; // 10% performance fee
     }
 
@@ -168,21 +144,23 @@ contract YieldAggregator is Ownable, ReentrancyGuard, Pausable {
      * @param _compAPY Current Compound APY
      * @param _aaveAPY Current Aave APY
      */
-    function deposit(
-        uint256 _amount, 
-        uint256 _compAPY, 
-        uint256 _aaveAPY
-    ) external nonReentrant whenNotPaused checkEmergency {
+    function deposit(uint256 _amount, uint256 _compAPY, uint256 _aaveAPY)
+        external
+        nonReentrant
+        whenNotPaused
+        checkEmergency
+    {
         // Validate Deposit
-        if (_amount == 0) 
+        if (_amount == 0) {
             revert YieldAggregator__InsufficientBalance(_amount, 0);
+        }
 
         // Transfer Tokens Safely
         wethToken.safeTransferFrom(msg.sender, address(this), _amount);
 
         // Protocol Selection
         ProtocolType targetProtocol = _selectOptimalProtocol(_compAPY, _aaveAPY);
-        
+
         // Update User Deposit
         UserDeposit storage userDeposit = userDeposits[msg.sender];
         userDeposit.amount += _amount;
@@ -202,23 +180,23 @@ contract YieldAggregator is Ownable, ReentrancyGuard, Pausable {
      * @return amount Total withdrawn amount including yield
      */
     function withdraw() external nonReentrant whenNotPaused returns (uint256) {
-    UserDeposit storage _userDeposit = userDeposits[msg.sender];
-    uint256 _depositAmount = _userDeposit.amount;
-    uint256 _grossAmount = _calculateTotalValue(msg.sender);
-    uint256 _yield = _grossAmount > _depositAmount ? _grossAmount - _depositAmount : 0;
-    uint256 _feeAmount = _collectFees(_yield);
-    uint256 _netAmount = _grossAmount - _feeAmount;
-    
-    // Reset the user values
-    delete userDeposits[msg.sender];
-    totalDeposits -= _depositAmount;
-    
-    _withdrawFromProtocol(currentProtocol, _grossAmount);
-    wethToken.safeTransfer(msg.sender, _netAmount);
-    
-    emit Withdrawal(msg.sender, _netAmount, currentProtocol, _yield);
-    return _netAmount;
-}
+        UserDeposit storage _userDeposit = userDeposits[msg.sender];
+        uint256 _depositAmount = _userDeposit.amount;
+        uint256 _grossAmount = _calculateTotalValue(msg.sender);
+        uint256 _yield = _grossAmount > _depositAmount ? _grossAmount - _depositAmount : 0;
+        uint256 _feeAmount = _collectFees(_yield);
+        uint256 _netAmount = _grossAmount - _feeAmount;
+
+        // Reset the user values
+        delete userDeposits[msg.sender];
+        totalDeposits -= _depositAmount;
+
+        _withdrawFromProtocol(currentProtocol, _grossAmount);
+        wethToken.safeTransfer(msg.sender, _netAmount);
+
+        emit Withdrawal(msg.sender, _netAmount, currentProtocol, _yield);
+        return _netAmount;
+    }
 
     //============================Admin functions===========================
     /**
@@ -226,23 +204,25 @@ contract YieldAggregator is Ownable, ReentrancyGuard, Pausable {
      * @param _compAPY Current Compound APY
      * @param _aaveAPY Current Aave APY
      */
-    function rebalance(
-        uint256 _compAPY, 
-        uint256 _aaveAPY
-    ) external nonReentrant onlyEmergencyAdmin whenNotPaused checkEmergency {
+    function rebalance(uint256 _compAPY, uint256 _aaveAPY)
+        external
+        nonReentrant
+        onlyEmergencyAdmin
+        whenNotPaused
+        checkEmergency
+    {
         // Check cooldown period
         uint256 timeSinceLastRebalance = block.timestamp - fees.lastRebalanceTimestamp;
-        if (timeSinceLastRebalance < REBALANCE_COOLDOWN)
-            revert YieldAggregator__RebalanceCooldown(
-                REBALANCE_COOLDOWN - timeSinceLastRebalance
-            );
+        if (timeSinceLastRebalance < REBALANCE_COOLDOWN) {
+            revert YieldAggregator__RebalanceCooldown(REBALANCE_COOLDOWN - timeSinceLastRebalance);
+        }
 
         ProtocolType _targetProtocol = _selectOptimalProtocol(_compAPY, _aaveAPY);
         if (_targetProtocol == currentProtocol) return;
 
         // Calculate total value before rebalance
         uint256 _totalValue = _calculateTotalProtocolValue();
-        
+
         // Perform rebalance
         _withdrawFromProtocol(currentProtocol, _totalValue);
         _depositToProtocol(_targetProtocol, _totalValue);
@@ -255,25 +235,28 @@ contract YieldAggregator is Ownable, ReentrancyGuard, Pausable {
         emit Rebalance(_previousProtocol, _targetProtocol, _totalValue, block.timestamp);
     }
 
-     /**
+    /**
      * @notice Updates the fee structure and fee collector address.
      * @param _newFeeCollector The address to receive collected fees.
      * @param _newManagementFee The new management fee (annual, in basis points).
      * @param _newPerformanceFee The new performance fee (in basis points).
      */
-    function updateProtocolConfiguration(
-        address _newFeeCollector,
-        uint96 _newManagementFee,
-        uint96 _newPerformanceFee
-    ) external onlyOwner {
+    function updateProtocolConfiguration(address _newFeeCollector, uint96 _newManagementFee, uint96 _newPerformanceFee)
+        external
+        onlyOwner
+    {
         // Validate fee collector address
         if (_newFeeCollector == address(0)) revert YieldAggregator__InvalidAddress(address(0));
 
         // Validate management fee
-        if (_newManagementFee > MAX_MANAGEMENT_FEE) revert YieldAggregator__FeeTooHigh(_newManagementFee, MAX_MANAGEMENT_FEE);
+        if (_newManagementFee > MAX_MANAGEMENT_FEE) {
+            revert YieldAggregator__FeeTooHigh(_newManagementFee, MAX_MANAGEMENT_FEE);
+        }
 
         // Validate performance fee
-        if (_newPerformanceFee > MAX_PERFORMANCE_FEE) revert YieldAggregator__FeeTooHigh(_newPerformanceFee, MAX_PERFORMANCE_FEE);
+        if (_newPerformanceFee > MAX_PERFORMANCE_FEE) {
+            revert YieldAggregator__FeeTooHigh(_newPerformanceFee, MAX_PERFORMANCE_FEE);
+        }
 
         // Update state variables
         feeCollector = _newFeeCollector;
@@ -287,20 +270,17 @@ contract YieldAggregator is Ownable, ReentrancyGuard, Pausable {
     /**
      * @notice Emergency withdrawal
      */
-    function emergencyWithdraw() 
-        external 
-        nonReentrant 
-        onlyEmergencyAdmin 
-    {
-        if (totalDeposits == 0)
+    function emergencyWithdraw() external nonReentrant onlyEmergencyAdmin {
+        if (totalDeposits == 0) {
             revert YieldAggregator__InsufficientBalance(0, totalDeposits);
+        }
 
         uint256 _totalValue = _calculateTotalProtocolValue();
         _withdrawFromProtocol(currentProtocol, _totalValue);
-        
+
         // Transfer to owner for safe keeping
         wethToken.safeTransfer(owner(), _totalValue);
-        
+
         // Reset contract state
         totalDeposits = 0;
         currentProtocol = ProtocolType.NONE;
@@ -316,10 +296,7 @@ contract YieldAggregator is Ownable, ReentrancyGuard, Pausable {
      * @param _aaveAPY Aave Protocol APY
      * @return Recommended Protocol
      */
-    function _selectOptimalProtocol(
-        uint256 _compAPY, 
-        uint256 _aaveAPY
-    ) internal view returns (ProtocolType) {
+    function _selectOptimalProtocol(uint256 _compAPY, uint256 _aaveAPY) internal view returns (ProtocolType) {
         if (_compAPY > _aaveAPY) {
             return ProtocolType.COMPOUND;
         } else if (_aaveAPY > _compAPY) {
@@ -344,7 +321,9 @@ contract YieldAggregator is Ownable, ReentrancyGuard, Pausable {
     }
 
     function _withdrawFromProtocol(ProtocolType _protocol, uint256 _amount) internal {
-        if (_amount > _calculateTotalProtocolValue()) revert YieldAggregator__InsufficientBalance(_amount, _calculateTotalProtocolValue());
+        if (_amount > _calculateTotalProtocolValue()) {
+            revert YieldAggregator__InsufficientBalance(_amount, _calculateTotalProtocolValue());
+        }
 
         if (_protocol == ProtocolType.COMPOUND) {
             uint256 _balance = compoundComet.balanceOf(address(this));
@@ -352,7 +331,9 @@ contract YieldAggregator is Ownable, ReentrancyGuard, Pausable {
             compoundComet.withdraw(WETH_ADDRESS, _amount);
         } else if (_protocol == ProtocolType.AAVE) {
             aavePool = _getAavePool();
-            if (!IERC20(AAVE_WETH_ADDRESS).approve(address(aavePool), _amount)) revert YieldAggregator__WETHApproveFailed();
+            if (!IERC20(AAVE_WETH_ADDRESS).approve(address(aavePool), _amount)) {
+                revert YieldAggregator__WETHApproveFailed();
+            }
             aavePool.withdraw(WETH_ADDRESS, _amount, address(this));
         } else {
             revert YieldAggregator__InvalidConfiguration();
@@ -414,24 +395,13 @@ contract YieldAggregator is Ownable, ReentrancyGuard, Pausable {
         return IPool(IPoolAddressesProvider(AAVE_POOL_PROVIDER).getPool());
     }
 
-    function getUserValue(address _user) 
-        external 
-        view 
-        returns (uint256 principal, uint256 yield) 
-    {
+    function getUserValue(address _user) external view returns (uint256 principal, uint256 yield) {
         uint256 _totalValue = _calculateTotalValue(_user);
         principal = userDeposits[_user].amount;
         yield = _totalValue > principal ? _totalValue - principal : 0;
     }
 
-    function getCurrentProtocolInfo() 
-        external 
-        view 
-        returns (
-            ProtocolType _protocol,
-            uint256 _totalValue
-        ) 
-    {
+    function getCurrentProtocolInfo() external view returns (ProtocolType _protocol, uint256 _totalValue) {
         _protocol = currentProtocol;
         _totalValue = _calculateTotalProtocolValue();
     }
@@ -447,7 +417,7 @@ contract YieldAggregator is Ownable, ReentrancyGuard, Pausable {
         if (_recipient == address(0)) revert YieldAggregator__InvalidAddress(address(0));
 
         // Attempt to send ETH back to the recipient
-        (bool success, ) = payable(_recipient).call{value: _amount}("");
+        (bool success,) = payable(_recipient).call{value: _amount}("");
         if (!success) revert YieldAggregator__RefundFailed();
 
         emit ETHRefunded(_recipient, _amount);
@@ -469,7 +439,7 @@ contract YieldAggregator is Ownable, ReentrancyGuard, Pausable {
         // Ensure the amount is not zero
         if (msg.value == 0) revert YieldAggregator__InvalidETHAmount();
 
-        _refundETH(msg.sender, msg.value);   
+        _refundETH(msg.sender, msg.value);
     }
 
     /**

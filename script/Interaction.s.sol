@@ -1,73 +1,83 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import {Script, console} from "forge-std/Script.sol";
+import {Script} from "forge-std/Script.sol";
+import {console2} from "forge-std/console2.sol";
 import {YieldAggregator} from "../src/YieldAggregator.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {DevOpsTools} from "foundry-devops/src/DevOpsTools.sol";
 
-contract YieldAggregatorInteraction is Script {
+contract InteractWithAggregator is Script {
     YieldAggregator public aggregator;
     IERC20 public weth;
-    
-    // Replace with your deployed aggregator address
-    address constant AGGREGATOR_ADDRESS = address(0); // TODO: Replace with actual address
-    address constant WETH_ADDRESS = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
 
-    function run() external {
-        uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
-        aggregator = YieldAggregator(AGGREGATOR_ADDRESS);
-        weth = IERC20(WETH_ADDRESS);
+    function setUp(address mostRecentlyDeployed) public {
+        // Load deployed contract address from .env
+        address payable aggregatorAddress = payable(mostRecentlyDeployed);
+        aggregator = YieldAggregator(aggregatorAddress);
+        weth = IERC20(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
+    }
 
-        vm.startBroadcast(deployerPrivateKey);
+    function depositToAggregator() public {
+        uint256 userPrivateKey = vm.envUint("PRIVATE_KEY");
+        vm.startBroadcast(userPrivateKey);
 
-        // Example interaction flow
-        checkAndPrintBalances();
-        depositFunds();
-        checkYieldAndRebalance();
-        withdrawFunds();
+        uint256 amount = 0.1 ether;
+
+        // Approve aggregator to spend WETH
+        weth.approve(address(aggregator), amount);
+
+        // Mock APY rates (example values)
+        uint256 compoundAPY = 500; // 5%
+        uint256 aaveAPY = 450; // 4.5%
+
+        // Deposit
+        aggregator.deposit(amount, compoundAPY, aaveAPY);
+
+        console2.log("Deposited:", amount);
 
         vm.stopBroadcast();
     }
 
-    function checkAndPrintBalances() internal view {
-        uint256 contractBalance = aggregator.getContractBalance();
-        string memory currentProtocol = aggregator.getCurrentProtocol();
-        uint256 totalDeposits = aggregator.depositAmount();
+    function withdrawFromAggregator() public {
+        uint256 userPrivateKey = vm.envUint("PRIVATE_KEY");
+        vm.startBroadcast(userPrivateKey);
 
-        console.log("Contract WETH Balance:", contractBalance);
-        console.log("Current Protocol:", currentProtocol);
-        console.log("Total Deposits:", totalDeposits);
+        // Withdraw all funds
+        uint256 withdrawn = aggregator.withdraw();
+
+        console2.log("Withdrawn amount:", withdrawn);
+
+        vm.stopBroadcast();
     }
 
-    function depositFunds() internal {
-        uint256 depositAmount = 1 ether;
-        
-        // First approve WETH
-        weth.approve(address(aggregator), depositAmount);
+    function rebalanceProtocol() public {
+        uint256 adminPrivateKey = vm.envUint("ADMIN_PRIVATE_KEY");
+        vm.startBroadcast(adminPrivateKey);
 
-        // Get mock APY rates (in practice, you'd get these from an oracle or API)
-        uint256 compoundAPY = 500; // 5%
-        uint256 aaveAPY = 400; // 4%
+        // Mock APY rates
+        uint256 compoundAPY = 600; // 6%
+        uint256 aaveAPY = 650; // 6.5%
 
-        // Deposit
-        aggregator.deposit(depositAmount, compoundAPY, aaveAPY);
-        console.log("Deposited:", depositAmount);
+        aggregator.rebalance(compoundAPY, aaveAPY);
+
+        console2.log("Rebalancing completed");
+
+        vm.stopBroadcast();
     }
 
-    function checkYieldAndRebalance() internal {
-        // In practice, you'd get these rates from an oracle or API
-        uint256 newCompoundAPY = 400; // 4%
-        uint256 newAaveAPY = 600; // 6%
-
-        // Check if rebalance is needed and execute
-        if (block.timestamp >= aggregator.lastRebalanceTimestamp() + 1 days) {
-            aggregator.rebalance(newCompoundAPY, newAaveAPY);
-            console.log("Rebalanced to highest yield protocol");
-        }
+    function checkUserValue() public view {
+        (uint256 principal, uint256 yield) = aggregator.getUserValue(msg.sender);
+        console2.log("Principal:", principal);
+        console2.log("Yield:", yield);
     }
 
-    function withdrawFunds() internal {
-        uint256 amountWithdrawn = aggregator.withdraw();
-        console.log("Withdrawn amount:", amountWithdrawn);
+    // Main entry point - you can customize which functions to run
+    function run() external {
+        address mostRecentlyDeployed = DevOpsTools.get_most_recent_deployment("YieldAggregato", block.chainid);
+
+        console2.log("Most recently deployed YieldAggregato address: %s", mostRecentlyDeployed);
+
+        setUp(mostRecentlyDeployed);
     }
 }

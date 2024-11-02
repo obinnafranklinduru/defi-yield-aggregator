@@ -37,6 +37,7 @@ interface IComet {
     error TransferInFailed();
     error TransferOutFailed();
     error Unauthorized();
+
     event AbsorbCollateral(
         address indexed absorber,
         address indexed borrower,
@@ -44,51 +45,16 @@ interface IComet {
         uint256 collateralAbsorbed,
         uint256 usdValue
     );
-    event AbsorbDebt(
-        address indexed absorber,
-        address indexed borrower,
-        uint256 basePaidOut,
-        uint256 usdValue
-    );
-    event Approval(
-        address indexed owner,
-        address indexed spender,
-        uint256 amount
-    );
-    event BuyCollateral(
-        address indexed buyer,
-        address indexed asset,
-        uint256 baseAmount,
-        uint256 collateralAmount
-    );
-    event PauseAction(
-        bool supplyPaused,
-        bool transferPaused,
-        bool withdrawPaused,
-        bool absorbPaused,
-        bool buyPaused
-    );
+    event AbsorbDebt(address indexed absorber, address indexed borrower, uint256 basePaidOut, uint256 usdValue);
+    event Approval(address indexed owner, address indexed spender, uint256 amount);
+    event BuyCollateral(address indexed buyer, address indexed asset, uint256 baseAmount, uint256 collateralAmount);
+    event PauseAction(bool supplyPaused, bool transferPaused, bool withdrawPaused, bool absorbPaused, bool buyPaused);
     event Supply(address indexed from, address indexed dst, uint256 amount);
-    event SupplyCollateral(
-        address indexed from,
-        address indexed dst,
-        address indexed asset,
-        uint256 amount
-    );
+    event SupplyCollateral(address indexed from, address indexed dst, address indexed asset, uint256 amount);
     event Transfer(address indexed from, address indexed to, uint256 amount);
-    event TransferCollateral(
-        address indexed from,
-        address indexed to,
-        address indexed asset,
-        uint256 amount
-    );
+    event TransferCollateral(address indexed from, address indexed to, address indexed asset, uint256 amount);
     event Withdraw(address indexed src, address indexed to, uint256 amount);
-    event WithdrawCollateral(
-        address indexed src,
-        address indexed to,
-        address indexed asset,
-        uint256 amount
-    );
+    event WithdrawCollateral(address indexed src, address indexed to, address indexed asset, uint256 amount);
     event WithdrawReserves(address indexed to, uint256 amount);
 
     function absorb(address absorber, address[] memory accounts) external;
@@ -108,18 +74,11 @@ interface IComet {
         bytes32 s
     ) external;
 
-    function allowance(
-        address owner,
-        address spender
-    ) external view returns (uint256);
+    function allowance(address owner, address spender) external view returns (uint256);
 
     function approve(address spender, uint256 amount) external returns (bool);
 
-    function approveThis(
-        address manager,
-        address asset,
-        uint256 amount
-    ) external;
+    function approveThis(address manager, address asset, uint256 amount) external;
 
     function balanceOf(address owner) external view returns (uint256);
 
@@ -137,9 +96,7 @@ interface IComet {
 
     function baseTokenPriceFeed() external view returns (address);
 
-    function baseTrackingAccrued(
-        address account
-    ) external view returns (uint64);
+    function baseTrackingAccrued(address account) external view returns (uint64);
 
     function baseTrackingBorrowSpeed() external view returns (uint256);
 
@@ -151,27 +108,13 @@ interface IComet {
 
     function borrowPerSecondInterestRateBase() external view returns (uint256);
 
-    function borrowPerSecondInterestRateSlopeHigh()
-        external
-        view
-        returns (uint256);
+    function borrowPerSecondInterestRateSlopeHigh() external view returns (uint256);
 
-    function borrowPerSecondInterestRateSlopeLow()
-        external
-        view
-        returns (uint256);
+    function borrowPerSecondInterestRateSlopeLow() external view returns (uint256);
 
-    function buyCollateral(
-        address asset,
-        uint256 minAmount,
-        uint256 baseAmount,
-        address recipient
-    ) external;
+    function buyCollateral(address asset, uint256 minAmount, uint256 baseAmount, address recipient) external;
 
-    function collateralBalanceOf(
-        address account,
-        address asset
-    ) external view returns (uint128);
+    function collateralBalanceOf(address account, address asset) external view returns (uint128);
 
     function decimals() external view returns (uint8);
 
@@ -179,19 +122,13 @@ interface IComet {
 
     function factorScale() external view returns (uint64);
 
-    function getAssetInfo(
-        uint8 i
-    ) external view returns (CometCore.AssetInfo memory);
+    function getAssetInfo(uint8 i) external view returns (CometCore.AssetInfo memory);
 
-    function getAssetInfoByAddress(
-        address asset
-    ) external view returns (CometCore.AssetInfo memory);
+    function getAssetInfoByAddress(address asset) external view returns (CometCore.AssetInfo memory);
 
     function getBorrowRate(uint256 utilization) external view returns (uint64);
 
-    function getCollateralReserves(
-        address asset
-    ) external view returns (uint256);
+    function getCollateralReserves(address asset) external view returns (uint256);
 
     function getPrice(address priceFeed) external view returns (uint256);
 
@@ -203,10 +140,7 @@ interface IComet {
 
     function governor() external view returns (address);
 
-    function hasPermission(
-        address owner,
-        address manager
-    ) external view returns (bool);
+    function hasPermission(address owner, address manager) external view returns (bool);
 
     function initializeStorage() external;
 
@@ -214,9 +148,7 @@ interface IComet {
 
     function isAllowed(address, address) external view returns (bool);
 
-    function isBorrowCollateralized(
-        address account
-    ) external view returns (bool);
+    function isBorrowCollateralized(address account) external view returns (bool);
 
     function isBuyPaused() external view returns (bool);
 
@@ -228,17 +160,10 @@ interface IComet {
 
     function isWithdrawPaused() external view returns (bool);
 
-    function liquidatorPoints(
-        address
-    )
+    function liquidatorPoints(address)
         external
         view
-        returns (
-            uint32 numAbsorbs,
-            uint64 numAbsorbed,
-            uint128 approxSpend,
-            uint32 _reserved
-        );
+        returns (uint32 numAbsorbs, uint64 numAbsorbed, uint128 approxSpend, uint32 _reserved);
 
     function maxAssets() external view returns (uint8);
 
@@ -246,47 +171,28 @@ interface IComet {
 
     function numAssets() external view returns (uint8);
 
-    function pause(
-        bool supplyPaused,
-        bool transferPaused,
-        bool withdrawPaused,
-        bool absorbPaused,
-        bool buyPaused
-    ) external;
+    function pause(bool supplyPaused, bool transferPaused, bool withdrawPaused, bool absorbPaused, bool buyPaused)
+        external;
 
     function pauseGuardian() external view returns (address);
 
     function priceScale() external view returns (uint64);
 
-    function quoteCollateral(
-        address asset,
-        uint256 baseAmount
-    ) external view returns (uint256);
+    function quoteCollateral(address asset, uint256 baseAmount) external view returns (uint256);
 
     function storeFrontPriceFactor() external view returns (uint256);
 
     function supply(address asset, uint256 amount) external;
 
-    function supplyFrom(
-        address from,
-        address dst,
-        address asset,
-        uint256 amount
-    ) external;
+    function supplyFrom(address from, address dst, address asset, uint256 amount) external;
 
     function supplyKink() external view returns (uint256);
 
     function supplyPerSecondInterestRateBase() external view returns (uint256);
 
-    function supplyPerSecondInterestRateSlopeHigh()
-        external
-        view
-        returns (uint256);
+    function supplyPerSecondInterestRateSlopeHigh() external view returns (uint256);
 
-    function supplyPerSecondInterestRateSlopeLow()
-        external
-        view
-        returns (uint256);
+    function supplyPerSecondInterestRateSlopeLow() external view returns (uint256);
 
     function supplyTo(address dst, address asset, uint256 amount) external;
 
@@ -298,14 +204,9 @@ interface IComet {
 
     function totalSupply() external view returns (uint256);
 
-    function totalsBasic()
-        external
-        view
-        returns (CometStorage.TotalsBasic memory);
+    function totalsBasic() external view returns (CometStorage.TotalsBasic memory);
 
-    function totalsCollateral(
-        address
-    ) external view returns (uint128 totalSupplyAsset, uint128 _reserved);
+    function totalsCollateral(address) external view returns (uint128 totalSupplyAsset, uint128 _reserved);
 
     function trackingIndexScale() external view returns (uint256);
 
@@ -313,22 +214,11 @@ interface IComet {
 
     function transferAsset(address dst, address asset, uint256 amount) external;
 
-    function transferAssetFrom(
-        address src,
-        address dst,
-        address asset,
-        uint256 amount
-    ) external;
+    function transferAssetFrom(address src, address dst, address asset, uint256 amount) external;
 
-    function transferFrom(
-        address src,
-        address dst,
-        uint256 amount
-    ) external returns (bool);
+    function transferFrom(address src, address dst, uint256 amount) external returns (bool);
 
-    function userBasic(
-        address
-    )
+    function userBasic(address)
         external
         view
         returns (
@@ -339,10 +229,7 @@ interface IComet {
             uint8 _reserved
         );
 
-    function userCollateral(
-        address,
-        address
-    ) external view returns (uint128 balance, uint128 _reserved);
+    function userCollateral(address, address) external view returns (uint128 balance, uint128 _reserved);
 
     function userNonce(address) external view returns (uint256);
 
@@ -350,12 +237,7 @@ interface IComet {
 
     function withdraw(address asset, uint256 amount) external;
 
-    function withdrawFrom(
-        address src,
-        address to,
-        address asset,
-        uint256 amount
-    ) external;
+    function withdrawFrom(address src, address to, address asset, uint256 amount) external;
 
     function withdrawReserves(address to, uint256 amount) external;
 
