@@ -27,7 +27,7 @@ contract InteractWithAggregator is Script {
         // Approve aggregator to spend WETH
         weth.approve(address(aggregator), amount);
 
-        // Mock APY rates (example values)
+        // Mock APY rates
         uint256 compoundAPY = 500; // 5%
         uint256 aaveAPY = 450; // 4.5%
 
