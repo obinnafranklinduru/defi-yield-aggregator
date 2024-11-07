@@ -2,133 +2,181 @@
 pragma solidity ^0.8.26;
 
 import {Test} from "forge-std/Test.sol";
+import {IComet} from "../src/IComet.sol";
+import {console2} from "forge-std/console2.sol";
 import {YieldAggregator} from "../src/YieldAggregator.sol";
+import {IPool} from "@aave/core-v3/contracts/interfaces/IPool.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {DeployYieldAggregator} from "../script/YieldAggregator.s.sol";
 
-// contract YieldAggregatorTest is Test {
-//     YieldAggregator public aggregator;
-//     address public owner;
-//     address public feeCollector;
+contract YieldAggregatorTest is Test {
+    YieldAggregator public yieldAggregator;
+    IERC20 public weth;
+    IComet public cometWeth;
+    IPool public aavePool;
 
-//     // Mainnet addresses
-//     address constant AAVE_PROVIDER = 0x2f39d218133AFaB8F2B819B1066c7E434Ad94E9e;
-//     address constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
-//     address constant COMPOUND = 0xA17581A9E3356d9A858b789D68B4d866e593aE94;
-//     address constant AAVE_WETH = 0x4d5F47FA6A74757f35C14fD3a6Ef8E3C9BC514E8;
+    address public constant WETH_ADDRESS = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+    address public constant AAVE_WETH_ADDRESS = 0x4d5F47FA6A74757f35C14fD3a6Ef8E3C9BC514E8;
+    address public constant COMPOUND_PROXY = 0xc3d688B66703497DAA19211EEdff47f25384cdc3;
+    address public constant AAVE_POOL_PROVIDER = 0x2f39d218133AFaB8F2B819B1066c7E434Ad94E9e;
+    address public constant AAVE_POOL_ADDRESS = 0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2;
+    address public constant FEE_COLLECTOR = 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266;
 
-//     // WETH whale address for testing
-//     address constant WETH_WHALE = 0x2F0b23f53734252Bda2277357e97e1517d6B042A;
+    address public owner;
+    address public user1;
+    address public user2;
 
-//     function setUp() public {
-//         owner = address(this);
-//         feeCollector = address(0x123);
+    uint256 public constant INITIAL_DEPOSIT = 10 ether;
+    uint256 public constant REBALANCE_COOLDOWN = 1 days;
 
-//         // Deploy the aggregator
-//         aggregator = new YieldAggregator(
-//             AAVE_PROVIDER,
-//             WETH,
-//             COMPOUND,
-//             AAVE_WETH,
-//             feeCollector
-//         );
+    struct UserDeposit {
+        uint256 amount;
+        uint256 lastDepositTime;
+        uint256 accumulatedYield;
+    }
 
-//         // Fork mainnet
-//         vm.createSelectFork(vm.envString("ETH_RPC_URL"));
+    struct Fees {
+        uint96 annualManagementFeeInBasisPoints;
+        uint96 performanceFee;
+        uint64 lastRebalanceTimestamp;
+    }
 
-//         // Impersonate WETH whale
-//         vm.startPrank(WETH_WHALE);
-//         IERC20(WETH).approve(address(aggregator), type(uint256).max);
-//         vm.stopPrank();
-//     }
+    enum ProtocolType {
+        NONE,
+        COMPOUND,
+        AAVE
+    }
 
-//     function testInitialState() public view {
-//         assertEq(aggregator.owner(), owner);
-//         assertEq(aggregator.feeCollector(), feeCollector);
-//         assertEq(aggregator.depositAmount(), 0);
-//     }
+    function setUp() public {
+        owner = makeAddr("owner");
+        user1 = makeAddr("user1");
+        user2 = makeAddr("user2");
 
-//     function testDeposit() public {
-//         uint256 depositAmount = 1 ether;
-//         uint256 compAPY = 500; // 5%
-//         uint256 aaveAPY = 400; // 4%
+        DeployYieldAggregator deployYieldAggregator = new DeployYieldAggregator();
+        yieldAggregator = deployYieldAggregator.run();
 
-//         // Simulate WETH whale depositing
-//         vm.startPrank(WETH_WHALE);
+        weth = IERC20(WETH_ADDRESS);
+        cometWeth = IComet(COMPOUND_PROXY);
+        aavePool = IPool(AAVE_POOL_ADDRESS);
 
-//         // Get WETH balance before
-//         uint256 balanceBefore = IERC20(WETH).balanceOf(WETH_WHALE);
+        // Mint some WETH for testing
+        vm.deal(owner, 50 ether);
+        weth.approve(address(yieldAggregator), 50 ether);
 
-//         // Deposit
-//         aggregator.deposit(depositAmount, compAPY, aaveAPY);
+        // Transfer WETH to user1 and user2
+        weth.transfer(user1, INITIAL_DEPOSIT);
+        weth.transfer(user2, INITIAL_DEPOSIT);
 
-//         // Verify deposit
-//         assertEq(aggregator.depositAmount(), depositAmount);
-//         assertEq(
-//             IERC20(WETH).balanceOf(WETH_WHALE),
-//             balanceBefore - depositAmount
-//         );
-//         assertEq(aggregator.locationOfFunds(), COMPOUND); // Should be in Compound as it has higher APY
+        // Approve YieldAggregator to spend WETH for all users
+        vm.prank(user1);
+        weth.approve(address(yieldAggregator), 50 ether);
 
-//         vm.stopPrank();
-//     }
+        vm.prank(user2);
+        weth.approve(address(yieldAggregator), 50 ether);
+    }
 
-//     function testRebalance() public {
-//         uint256 depositAmount = 1 ether;
+    function testDisply() public {
+        vm.startPrank(user1);
+        assertEq(true, true);
+        vm.stopPrank();
+    }
 
-//         // Initial deposit to Compound (higher APY)
-//         vm.startPrank(WETH_WHALE);
-//         aggregator.deposit(depositAmount, 500, 400);
-//         vm.stopPrank();
+    // function testDeposit() public {
+    //     uint256 compAPY = 500; // 5%
+    //     uint256 aaveAPY = 300; // 3%
 
-//         // Advance time to pass rebalance cooldown
-//         vm.warp(block.timestamp + 1 days + 1);
+    //     vm.startPrank(user1);
+    //     yieldAggregator.deposit(INITIAL_DEPOSIT, compAPY, aaveAPY);
+    //     vm.stopPrank();
 
-//         // Rebalance to Aave (now higher APY)
-//         aggregator.rebalance(400, 600);
+    //     UserDeposit memory userDeposit = yieldAggregator.userDeposits(user1);
+    //     uint256 amount = userDeposit.amount;
+    //     assertEq(amount, INITIAL_DEPOSIT, "User amount should be INITIAL_DEPOSIT");
+    //     assertEq(yieldAggregator.totalDeposits(), INITIAL_DEPOSIT);
+    //     assertEq(yieldAggregator.currentProtocol(), uint256(YieldAggregator.ProtocolType.COMPOUND));
+    // }
 
-//         // Verify funds moved to Aave
-//         assertEq(aggregator.locationOfFunds(), address(aggregator.aavePool()));
-//     }
+    // function testRevertDepositWithZeroAmount() public {
+    //     vm.startPrank(user1);
+    //     vm.expectRevert(abi.encodeWithSelector(YieldAggregator.YieldAggregator__InsufficientBalance.selector, 0, 0));
+    //     yieldAggregator.deposit(0, 500, 300);
+    //     vm.stopPrank();
+    // }
 
-//     function testEmergencyWithdraw() public {
-//         uint256 depositAmount = 1 ether;
+    // function testWithdrawal() public {
+    //     vm.startPrank(user1);
+    //     yieldAggregator.deposit(INITIAL_DEPOSIT, 500, 300);
+    //     uint256 withdrawnAmount = yieldAggregator.withdraw();
+    //     vm.stopPrank();
 
-//         // Initial deposit
-//         vm.startPrank(WETH_WHALE);
-//         aggregator.deposit(depositAmount, 500, 400);
-//         vm.stopPrank();
+    //     UserDeposit memory userDeposit = yieldAggregator.userDeposits(user1);
+    //     assertEq(userDeposit.amount, 0);
+    //     assertGt(withdrawnAmount, 0);
+    // }
 
-//         // Set emergency admin
-//         aggregator.setEmergencyAdmin(owner, true);
+    // function testRebalance() public {
+    //     vm.startPrank(user1);
+    //     yieldAggregator.deposit(INITIAL_DEPOSIT, 300, 500);
+    //     vm.stopPrank();
 
-//         // Emergency withdraw
-//         uint256 balanceBefore = IERC20(WETH).balanceOf(owner);
-//         aggregator.emergencyWithdraw();
+    //     vm.warp(block.timestamp + REBALANCE_COOLDOWN);
 
-//         // Verify withdrawal
-//         assertTrue(aggregator.emergencyExit());
-//         assertEq(aggregator.depositAmount(), 0);
-//         assertTrue(IERC20(WETH).balanceOf(owner) > balanceBefore);
-//     }
+    //     ProtocolType initialProtocol = yieldAggregator.currentProtocol();
 
-//     function testFeeCollection() public {
-//         uint256 depositAmount = 1 ether;
+    //     vm.startPrank(owner);
+    //     yieldAggregator.rebalance(500, 300);
+    //     vm.stopPrank();
 
-//         // Initial deposit
-//         vm.startPrank(WETH_WHALE);
-//         aggregator.deposit(depositAmount, 500, 400);
-//         vm.stopPrank();
+    //     ProtocolType newProtocol = yieldAggregator.currentProtocol();
+    //     // assertNotEqual(uint256(newProtocol), uint256(initialProtocol));
+    // }
 
-//         // Advance time 1 year
-//         vm.warp(block.timestamp + 365 days);
+    // function testEmergencyWithdrawal() public {
+    //     vm.startPrank(user1);
+    //     yieldAggregator.deposit(INITIAL_DEPOSIT, 500, 300);
+    //     vm.stopPrank();
 
-//         // Withdraw to trigger fee collection
-//         uint256 balanceBefore = IERC20(WETH).balanceOf(feeCollector);
-//         aggregator.withdraw();
+    //     uint256 balanceBefore = weth.balanceOf(owner);
 
-//         // Verify fees collected
-//         assertTrue(IERC20(WETH).balanceOf(feeCollector) > balanceBefore);
-//     }
+    //     vm.startPrank(owner);
+    //     yieldAggregator.emergencyWithdraw();
+    //     vm.stopPrank();
 
-//     // Add more test cases as needed...
-// }
+    //     uint256 balanceAfter = weth.balanceOf(owner);
+    //     //assertNotEqual(balanceAfter, balanceBefore);
+    //     assertTrue(yieldAggregator.emergencyExitEnabled());
+    // }
+
+    // function testUpdateProtocolConfiguration() public {
+    //     address newFeeCollector = user2;
+    //     uint96 newManagementFee = 200; // 2%
+    //     uint96 newPerformanceFee = 2000; // 20%
+
+    //     vm.startPrank(owner);
+    //     yieldAggregator.updateProtocolConfiguration(
+    //         newFeeCollector,
+    //         newManagementFee,
+    //         newPerformanceFee
+    //     );
+    //     vm.stopPrank();
+
+    //     assertEq(yieldAggregator.feeCollector(), newFeeCollector);
+
+    //     Fees memory fees = yieldAggregator.fees();
+    //     assertEq(fees.annualManagementFeeInBasisPoints, newManagementFee);
+    //     assertEq(fees.performanceFee, newPerformanceFee);
+    // }
+
+    // function testRevertInvalidFeeUpdate() public {
+    //     uint96 invalidManagementFee = 600;
+
+    //     vm.startPrank(owner);
+    //     vm.expectRevert(abi.encodeWithSelector(YieldAggregator.YieldAggregator__FeeTooHigh.selector, invalidManagementFee, YieldAggregator.MAX_MANAGEMENT_FEE));
+    //     yieldAggregator.updateProtocolConfiguration(
+    //         user2,
+    //         invalidManagementFee,
+    //         2000
+    //     );
+    //     vm.stopPrank();
+    // }
+}

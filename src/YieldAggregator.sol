@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.26;
+pragma solidity ^0.8.19;
 
-import {IComet} from "./IComet.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IPool} from "@aave/core-v3/contracts/interfaces/IPool.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
@@ -9,6 +8,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IPoolAddressesProvider} from "@aave/core-v3/contracts/interfaces/IPoolAddressesProvider.sol";
+import {IComet} from "./IComet.sol";
 
 /**
  * @title DeFi Yield Aggregator
@@ -25,6 +25,7 @@ contract YieldAggregator is Ownable, ReentrancyGuard, Pausable {
     error YieldAggregator__InvalidETHAmount();
     error YieldAggregator__WETHApproveFailed();
     error YieldAggregator__InvalidConfiguration();
+    error YieldAggregator__InvalidAavePoolProvider();
     error YieldAggregator__InvalidAddress(address addr);
     error YieldAggregator__DirectETHTransferNotAllowed();
     error YieldAggregator__RebalanceCooldown(uint256 timeRemaining);
@@ -52,10 +53,25 @@ contract YieldAggregator is Ownable, ReentrancyGuard, Pausable {
     }
 
     // Immutable Configuration
+    // The address of the Wrapped ETH (WETH) token contract. WETH is an ERC-20 token that represents Ether (ETH) and maintains a 1:1 value peg to ETH.
+    // This contract accepts deposits in WETH for yield farming purposes.
     address public immutable WETH_ADDRESS;
+
+    // The address of Aave's wrapped ETH (WETH) asset on the Aave lending platform. This is where the protocol will interact with Aave's WETH market,
+    // allowing the contract to supply or withdraw WETH from Aave to earn yield.
     address public immutable AAVE_WETH_ADDRESS;
+
+    // The address of the Compound protocol's proxy contract, used to interact with Compound’s markets. This proxy contract
+    // allows the aggregator to access the pool where Compound’s WETH market is available, enabling deposits or withdrawals to/from Compound.
     address public immutable COMPOUND_PROXY_ADDRESS;
+
+    // The address of Aave's IPoolAddressesProvider contract, which provides the current address of Aave's lending pool.
+    // This allows the aggregator to access the latest Aave pool contract in case it changes, ensuring continuous yield farming in Aave.
     address public immutable AAVE_POOL_PROVIDER;
+
+    // A fallback address for Aave's lending pool. This is used as a backup in case the IPoolAddressesProvider contract fails to provide
+    // the current pool address. The aggregator can still interact with this predefined address for yield farming in Aave.
+    address public AAVE_POOL_ADDRESS;
 
     // Fee-related constants
     uint256 public constant BASIS_POINTS = 10000;
@@ -81,6 +97,7 @@ contract YieldAggregator is Ownable, ReentrancyGuard, Pausable {
     IComet public immutable compoundComet;
     IPool private aavePool;
 
+    //  Events
     event Deposit(address indexed user, uint256 amount, ProtocolType protocol, uint256 timestamp);
     event Withdrawal(address indexed user, uint256 amount, ProtocolType protocol, uint256 yield);
     event EmergencyWithdrawal(address indexed owner, uint256 amount, ProtocolType protocol);
@@ -92,8 +109,9 @@ contract YieldAggregator is Ownable, ReentrancyGuard, Pausable {
     event ProtocolConfigurationUpdated(
         address indexed admin, address newFeeCollector, uint256 newManagementFee, uint256 newPerformanceFee
     );
+    event AavePoolProviderError(bytes reason);
 
-    // Events
+    // Modifier
     modifier onlyEmergencyAdmin() {
         if (!emergencyAdmins[msg.sender] && msg.sender != owner()) {
             revert YieldAggregator__InvalidAddress(msg.sender);
@@ -114,12 +132,13 @@ contract YieldAggregator is Ownable, ReentrancyGuard, Pausable {
         address _aaveWethAddress,
         address _compoundProxy,
         address _aavePoolProvider,
+        address _aavePoolAddress,
         address _feeCollector
     ) Ownable(msg.sender) {
         // Address Validation
         if (
             _wethAddress == address(0) || _aaveWethAddress == address(0) || _compoundProxy == address(0)
-                || _aavePoolProvider == address(0) || _feeCollector == address(0)
+                || _aavePoolProvider == address(0) || _aavePoolAddress == address(0) || _feeCollector == address(0)
         ) {
             revert YieldAggregator__InvalidConfiguration();
         }
@@ -128,6 +147,7 @@ contract YieldAggregator is Ownable, ReentrancyGuard, Pausable {
         AAVE_WETH_ADDRESS = _aaveWethAddress;
         COMPOUND_PROXY_ADDRESS = _compoundProxy;
         AAVE_POOL_PROVIDER = _aavePoolProvider;
+        AAVE_POOL_ADDRESS = _aavePoolAddress;
 
         wethToken = IERC20(_wethAddress);
         compoundComet = IComet(_compoundProxy);
@@ -160,6 +180,7 @@ contract YieldAggregator is Ownable, ReentrancyGuard, Pausable {
 
         // Protocol Selection
         ProtocolType targetProtocol = _selectOptimalProtocol(_compAPY, _aaveAPY);
+        currentProtocol = targetProtocol;
 
         // Update User Deposit
         UserDeposit storage userDeposit = userDeposits[msg.sender];
@@ -267,6 +288,13 @@ contract YieldAggregator is Ownable, ReentrancyGuard, Pausable {
         emit ProtocolConfigurationUpdated(msg.sender, _newFeeCollector, _newManagementFee, _newPerformanceFee);
     }
 
+    function updateAavePoolAddress(address _newAavePoolAddress) external onlyOwner {
+        if (_newAavePoolAddress == address(0)) {
+            revert YieldAggregator__InvalidAddress(address(0));
+        }
+        AAVE_POOL_ADDRESS = _newAavePoolAddress;
+    }
+
     /**
      * @notice Emergency withdrawal
      */
@@ -309,12 +337,29 @@ contract YieldAggregator is Ownable, ReentrancyGuard, Pausable {
 
     function _depositToProtocol(ProtocolType _protocol, uint256 _amount) internal {
         if (_protocol == ProtocolType.COMPOUND) {
+            // Approve WETH spending first
             if (!wethToken.approve(address(compoundComet), _amount)) revert YieldAggregator__WETHApproveFailed();
-            compoundComet.supply(WETH_ADDRESS, _amount);
+
+            // Important: Try-catch to verify supply
+            try compoundComet.supply(WETH_ADDRESS, _amount) {
+                // Supply successful
+                return;
+            } catch {
+                revert YieldAggregator__InvalidConfiguration();
+            }
         } else if (_protocol == ProtocolType.AAVE) {
             aavePool = _getAavePool();
-            if (!wethToken.approve(address(aavePool), _amount)) revert YieldAggregator__WETHApproveFailed();
-            aavePool.supply(WETH_ADDRESS, _amount, address(this), 0);
+            if (!wethToken.approve(address(aavePool), _amount)) {
+                revert YieldAggregator__WETHApproveFailed();
+            }
+
+            // Important: Try-catch to verify supply
+            try aavePool.supply(WETH_ADDRESS, _amount, address(this), 0) {
+                // Supply successful
+                return;
+            } catch {
+                revert YieldAggregator__InvalidConfiguration();
+            }
         } else {
             revert YieldAggregator__InvalidConfiguration();
         }
@@ -363,9 +408,17 @@ contract YieldAggregator is Ownable, ReentrancyGuard, Pausable {
      */
     function _calculateTotalProtocolValue() internal view returns (uint256) {
         if (currentProtocol == ProtocolType.COMPOUND) {
-            return compoundComet.balanceOf(address(this));
+            try compoundComet.balanceOf(address(this)) returns (uint256 balance) {
+                return balance;
+            } catch {
+                return 0;
+            }
         } else if (currentProtocol == ProtocolType.AAVE) {
-            return IERC20(AAVE_WETH_ADDRESS).balanceOf(address(this));
+            try IERC20(AAVE_WETH_ADDRESS).balanceOf(address(this)) returns (uint256 balance) {
+                return balance;
+            } catch {
+                return 0;
+            }
         }
         return 0;
     }
@@ -383,7 +436,13 @@ contract YieldAggregator is Ownable, ReentrancyGuard, Pausable {
         uint256 _totalFees = _performanceFeeAmount + _managementFeeAmount;
 
         if (_totalFees > 0) {
-            wethToken.safeTransfer(feeCollector, _totalFees);
+            try wethToken.transfer(feeCollector, _totalFees) {
+                // Transfer successful
+                return _totalFees;
+            } catch {
+                // Transfer failed, handle the failure
+                return 0;
+            }
         }
 
         emit FeesCollected(msg.sender, fees.performanceFee, fees.annualManagementFeeInBasisPoints, block.timestamp);
@@ -391,8 +450,19 @@ contract YieldAggregator is Ownable, ReentrancyGuard, Pausable {
     }
 
     //=======================View Functions==================================
-    function _getAavePool() private view returns (IPool) {
-        return IPool(IPoolAddressesProvider(AAVE_POOL_PROVIDER).getPool());
+    function _getAavePool() private returns (IPool) {
+        try IPoolAddressesProvider(AAVE_POOL_PROVIDER).getPool() returns (address poolAddress) {
+            if (poolAddress == address(0)) {
+                revert YieldAggregator__InvalidAavePoolProvider();
+            }
+            return IPool(poolAddress);
+        } catch (bytes memory reason) {
+            // Log the error reason
+            emit AavePoolProviderError(reason);
+
+            // Fallback to the stored Aave pool address
+            return IPool(AAVE_POOL_ADDRESS);
+        }
     }
 
     function getUserValue(address _user) external view returns (uint256 principal, uint256 yield) {
