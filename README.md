@@ -1,5 +1,5 @@
 <!-- markdownlint-disable MD033 -->
-<h1 align="center">Yield Aggregator Smart Contract (Hardhat Version)</h1>
+<h1 align="center">Yield Aggregator Smart Contract (Foundry Version)</h1>
 <p align="center"><a href="https://github.com/obinnafranklinduru/defi-yield-aggregator-hardhat/">Check out the Hardhat Version</a></p>
 <!-- markdownlint-enable MD033 -->
 
