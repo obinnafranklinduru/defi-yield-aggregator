@@ -1,4 +1,7 @@
-# Yield Aggregator Smart Contract
+<!-- markdownlint-disable MD033 -->
+<h1 align="center">Yield Aggregator Smart Contract (Hardhat Version)</h1>
+<p align="center"><a href="https://github.com/obinnafranklinduru/defi-yield-aggregator-hardhat/">Check out the Hardhat Version</a></p>
+<!-- markdownlint-enable MD033 -->
 
 The **YieldAggregator** smart contract is designed to manage user deposits to maximize yield across popular DeFi protocols, such as **Aave** and **Compound**. The contract dynamically allocates funds to the protocol with the highest yield, provides fee management, and allows emergency withdrawals for enhanced security.
 
@@ -64,6 +67,7 @@ The contract is organized as follows:
    - **AAVE_WETH_ADDRESS**: Address of Aave's WETH reserve.
    - **COMPOUND_PROXY_ADDRESS**: Compound protocol’s proxy contract.
    - **AAVE_POOL_PROVIDER**: Aave’s address provider for the pool.
+   - **AAVE_POOL_ADDRESS**: A fallback address for Aave's lending pool
    - **feeCollector**: Address for collecting fees.
 
 2. **Constructor Parameters**:
@@ -71,6 +75,7 @@ The contract is organized as follows:
    - `_aaveWethAddress`: Address of the Aave WETH reserve.
    - `_compoundProxy`: Address of the Compound proxy.
    - `_aavePoolProvider`: Address provider for Aave’s pool.
+   - `_aavePoolAddress`: Fallback Address for Aave’s pool.
    - `_feeCollector`: Address for collecting protocol fees.
 
 Example:
@@ -81,6 +86,7 @@ YieldAggregator(
     _aaveWethAddress,
     _compoundProxy,
     _aavePoolProvider,
+    _aavePoolAddress,
     _feeCollector
 )
 ```
@@ -198,7 +204,7 @@ The contract emits several key events to notify external systems of state change
 4. **Run Tests**:
 
    ```bash
-   forge test
+   forge test -vvvv
    ```
 
 5. **Deploy Contract**:
